@@ -1,0 +1,219 @@
+#!/bin/sh
+#AUTHOR=zcola
+#################################################################################
+#
+InsertSection "Software: rsyncserver"
+#
+#################################################################################
+
+RSYNC_DAEMON_RUNNING=0
+RSYNC_DAEMON_CONFIG=""
+
+TMPFILE=`mktemp /tmp/lynis.XXXXXX` || exit 1
+
+#################################################################################
+#
+# Test        : RSYNC-6702
+# Description : Search for rsyncd process
+Register --test-no RSYNC-6702 --weight L --network NO --description "Check for running rsync daemon"
+if [ ${SKIPTEST} -eq 0 ]; then
+	logtext "Test: Searching for running rsync daemon"
+	FIND=`${PSBINARY} aux|grep  "rsync"|grep daemon|grep -v grep`
+	if [ ! "${FIND}" = "" ]; then
+		RSYNC_DAEMON_RUNNING=1
+		logtext "Result: found running rsync daemon"
+		Display --indent 2 --text "- Checking rsync daemon..." --result FOUND --color GREEN
+	else
+		logtext "Result: no running rsync daemon found"
+		Display --indent 2 --text "- Checking rsync daemon..." --result "NOT FOUND" --color WHITE
+	fi
+fi
+#
+#################################################################################
+#
+# Test        : RSYNC-6703
+# Description : Check rsyncd running user
+if [ ${RSYNC_DAEMON_RUNNING} -eq 1 ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
+Register --test-no RSYNC-6703 --preqs-met ${PREQS_MET} --weight L --network NO --description "Checking rsyncd running user"
+if [ ${SKIPTEST} -eq 0 ]; then
+	logtext "Test: checking rsyncd running user"
+	FIND=`${PSBINARY} aux|grep  "rsync"|grep daemon|grep -v grep|awk '{print $1}'`
+	if [ ! "${FIND}" = "root" ]; then
+		logtext "Result: rsyncd using a non-root users to run"
+		report "rsync_user=${FIND}"
+		Display --indent 4 --text "- Checking rsyncd running user..." --result OK --color GREEN
+		AddHP 1 1
+	else 
+		logtext "Result: rsyncd using a root users to run"
+		report "rsync_user=${FIND}"
+		Display --indent 4 --text "- Checking rsyncd running user..." --result WARNING --color RED
+		AddHP 0 1
+	fi
+fi
+
+#################################################################################
+#
+# Test        : RSYNC-6704
+# Description : Search for rsyncd configuration file
+if [ ${RSYNC_DAEMON_RUNNING} -eq 1 ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
+Register --test-no RSYNC-6704 --preqs-met ${PREQS_MET} --weight L --network NO --description "Check rsyncd configuration file"
+if [ ${SKIPTEST} -eq 0 ]; then
+	logtext "Test: searching rsyncd configuration file"
+	if [ ! "${RSYNC_DAEMON_CONFIG}" = "" ]; then
+		logtext "Result: found rsyncd configuration file"
+		report "rsync_conf_file=${RSYNC_DAEMON_CONFIG}"
+		Display --indent 4 --text "- Searching rsyncd configuration file..." --result FOUND --color GREEN
+		#YYY search include statements for additional configuration files
+	else 
+		FIND=`${PSBINARY} ax|grep  "rsync"|grep -vE "grep|${0}"|awk -F "config=" '{print $2}'`
+		if [ ! "${FIND}" = "" -a -f "${FIND}" ]; then 
+			logtext "Result: found rsyncd configuration file"
+			RSYNC_DAEMON_CONFIG=${FIND}
+			report "rsync_conf_file=${RSYNC_DAEMON_CONFIG}"
+			Display --indent 4 --text "- Searching rsyncd configuration file..." --result FOUND --color GREEN
+		else
+			logtext "Result: no rsyncd configuration file found"
+			Display --indent 2 --text "- Searching rsyncd configuration file..." --result "NOT FOUND" --color RED
+			AddHP 0 1
+		fi
+	fi
+fi
+#################################################################################
+#
+#     Test        : RSYNC-7406
+#     Description : Check for a running rsyncd port
+check_opt_name="port"
+
+if [ ${RSYNC_DAEMON_RUNNING} -eq 1 -a ! "${RSYNC_DAEMON_CONFIG}" = "" ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
+Register --test-no RSYNC-7406 --preqs-met ${PREQS_MET} --weight L --network NO --description "RSYNC daemon listening port"
+if [ ${SKIPTEST} -eq 0 ]; then
+	logtext "Test: Searching for a RSYNC port..."
+	cat ${RSYNC_DAEMON_CONFIG}|sed '/^\[/,$d' > ${TMPFILE}
+	RSYNC_DAEMON_CONFIG_MAIN=${TMPFILE}
+	FIND=`sed "s# ##g" ${RSYNC_DAEMON_CONFIG_MAIN}|awk -F '=' '{ if ($1=="'"${check_opt_name}"'") { print $2 }}'`
+	if ! [ -z "$FIND" ]; then
+		if [ ! $FIND = "873" ]; then
+			Display --indent 2 --text "- Checking RSYNC listening port..." --result FOUND --color GREEN
+			logtext "Result: setting port number to ${FIND}"
+			RSYNC_DAEMON_PORT="${FIND}"
+			AddHP 3 3
+		else
+			Display --indent 2 --text "- Checking RSYNC listening port..." --result FOUND --color RED
+			logtext "Result: setting port number to ${FIND}"
+			RSYNC_DAEMON_PORT="${FIND}"
+			ReportWarning ${TEST_NO} "M" "Not a universal standard definition rsyncd port"
+			AddHP 0 3
+		fi
+	else
+		Display --indent 2 --text "- Checking RSYNC listening port..." --result "DEFAULT" --color RED
+		logtext "Result: setting port to default number, as no other port has been configured"
+		RSYNC_DAEMON_PORT="873"
+		ReportWarning ${TEST_NO} "M" "Not a universal standard definition rsyncd port "
+		AddHP 0 3
+	fi
+fi
+#################################################################################
+#
+#    # Test        : RSYNC-7408
+#    # Description : Check for a rsyncd option:list
+check_opt_name="list"
+
+if [ ${RSYNC_DAEMON_RUNNING} -eq 1 -a ! "${RSYNC_DAEMON_CONFIG}" = "" ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
+Register --test-no RSYNC-7408 --preqs-met ${PREQS_MET} --weight L --network NO --description "Check rsync option: ${check_opt_name}"
+if [ ${SKIPTEST} -eq 0 ]; then
+	logtext "Test: Checking RSYNC option: ${check_opt_name}..."
+	FIND=`awk -F '=' '/^list/{print $2}' ${RSYNC_DAEMON_CONFIG_MAIN}|sed "s# ##g"`
+	if ! [ -z "$FIND" ]; then
+		if [ $FIND = "no" ]; then
+			Display --indent 2 --text "- Checking RSYNC option: list..." --result "DISABLE" --color GREEN
+			logtext "Result: list is disable"
+			AddHP 3 3
+		else
+			Display --indent 2 --text "- Checking RSYNC option: list..." --result "ENABLE" --color RED
+			logtext "Result: list is enable"
+			ReportWarning ${TEST_NO} "M" "list is enable"
+			AddHP 0 3
+		fi
+	else
+		Display --indent 2 --text "- Checking RSYNC option: list..." --result "NOT FOUND" --color RED
+		logtext "Result: No configuration list Options"
+		ReportWarning ${TEST_NO} "M" "No configuration list Options"
+		AddHP 0 3
+	fi
+fi
+#################################################################################
+#
+#    # Test        : RSYNC-7410
+#    # Description : Check for a rsyncd option:secrets file
+check_opt_name="secrets file"
+
+if [ ${RSYNC_DAEMON_RUNNING} -eq 1 -a ! "${RSYNC_DAEMON_CONFIG}" = "" ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
+Register --test-no RSYNC-7410 --preqs-met ${PREQS_MET} --weight L --network NO --description "Check rsync option: ${check_opt_name}"
+if [ ${SKIPTEST} -eq 0 ]; then
+	logtext "Test: Checking RSYNC option: ${check_opt_name}..."
+	FIND=`cat ${RSYNC_DAEMON_CONFIG_MAIN}|grep "^${check_opt_name}"`
+	if ! [ -z "$FIND" ]; then
+		Display --indent 2 --text "- Checking RSYNC option: ${check_opt_name}..." --result "FOUND" --color GREEN
+		logtext "Result: ${check_opt_name}  has been configured"
+		AddHP 3 3
+	else
+		Display --indent 2 --text "- Checking RSYNC option: ${check_opt_name}..." --result "NOT FOUND" --color RED
+		logtext "Result: No configuration ${check_opt_name} Options"
+		ReportWarning ${TEST_NO} "M" "No configuration ${check_opt_name} Options"
+		AddHP 0 3
+	fi
+fi
+#################################################################################
+#
+#    # Test        : RSYNC-7412
+#    # Description : Check for a rsyncd option:auth users
+check_opt_name="auth users"
+
+if [ ${RSYNC_DAEMON_RUNNING} -eq 1 -a ! "${RSYNC_DAEMON_CONFIG}" = "" ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
+Register --test-no RSYNC-7412 --preqs-met ${PREQS_MET} --weight L --network NO --description "Check rsync option: ${check_opt_name}"
+if [ ${SKIPTEST} -eq 0 ]; then
+	logtext "Test: Checking RSYNC option: ${check_opt_name}..."
+	FIND=`cat ${RSYNC_DAEMON_CONFIG}|grep "^${check_opt_name}"`
+	if ! [ -z "$FIND" ]; then
+		Display --indent 2 --text "- Checking RSYNC option: ${check_opt_name}..." --result "FOUND" --color GREEN
+		logtext "Result: ${check_opt_name} has been configured"
+		AddHP 3 3
+	else
+		Display --indent 2 --text "- Checking RSYNC option: ${check_opt_name}..." --result "NOT FOUND" --color RED
+		logtext "Result: No configuration ${check_opt_name} Options"
+		ReportWarning ${TEST_NO} "M" "No configuration ${check_opt_name} Options"
+		AddHP 0 3
+	fi
+fi
+#################################################################################
+#
+#    # Test        : RSYNC-7414
+#    # Description : Check for a rsyncd option:hosts allow
+check_opt_name="hosts allow"
+
+if [ ${RSYNC_DAEMON_RUNNING} -eq 1 -a ! "${RSYNC_DAEMON_CONFIG}" = "" ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
+Register --test-no RSYNC-7414 --preqs-met ${PREQS_MET} --weight L --network NO --description "Check rsync option: ${check_opt_name}"
+if [ ${SKIPTEST} -eq 0 ]; then
+	logtext "Test: Checking RSYNC option: ${check_opt_name}..."
+	FIND=`cat ${RSYNC_DAEMON_CONFIG}|grep "^${check_opt_name}"`
+	if ! [ -z "$FIND" ]; then
+		Display --indent 2 --text "- Checking RSYNC option: ${check_opt_name}..." --result "FOUND" --color GREEN
+		logtext "Result: ${check_opt_name} has been configured"
+		AddHP 3 3
+	else
+		Display --indent 2 --text "- Checking RSYNC option: ${check_opt_name}..." --result "NOT FOUND" --color RED
+		logtext "Result: No configuration ${check_opt_name} Options"
+		ReportWarning ${TEST_NO} "M" "No configuration ${check_opt_name} Options"
+		AddHP 0 3
+	fi
+fi
+############
+# Remove temp file
+if [ -f ${TMPFILE} -a ! "${TMPFILE}" = "" ]; then
+	rm -f ${TMPFILE}
+fi
+
+report "rsync_daemon_running=${RSYNC_DAEMON_RUNNING}"
+report "rsync_daemon_port=${RSYNC_DAEMON_PORT}"
+########
+wait_for_keypress

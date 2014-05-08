@@ -1,0 +1,339 @@
+#!/bin/sh
+#AUTHOR=zcola
+
+#################################################################################
+#
+# Software: webserver
+#
+#################################################################################
+#
+InsertSection "Software: webserver"
+#
+#################################################################################
+#
+# Reset Apache status
+APACHE_INSTALLED=0
+APACHE_MODULES_ENABLED_LOCS="/etc/apache2/mods-enabled"
+APACHE_MODULES_LOCS="/etc/httpd/modules /opt/local/apache2/modules /usr/lib/apache2/modules /usr/lib/httpd/modules /usr/local/libexec/apache /usr/local/libexec/apache22 /usr/lib64/apache2/modules /usr/lib64/httpd/modules"
+NGINX_RUNNING=0
+NGINX_CONF_LOCS="/etc/nginx /usr/local/etc/nginx /usr/local/nginx/conf"
+NGINX_CONF_LOCATION=""
+#
+#################################################################################
+#
+sTEST_APACHE_TARGETS="/etc/apache /etc/apache2 /etc/httpd /usr/local/apache /usr/local/apache2 \
+	/usr/local/etc/apache /usr/local/etc/apache2 /usr/local/etc/apache22 \
+	/usr/pkg/etc/httpd /etc/sysconfig/apache2"
+
+if [ "${OS}" = "AIX" ]; then
+	TMPFILE=/tmp/lynis.$$
+	echo "" > ${TMPFILE}
+else
+	TMPFILE=`mktemp /tmp/lynis.XXXXXX` || exit 1
+fi
+
+
+#
+#################################################################################
+#
+# Test        : HTTP-6622
+# Description : Test for Apache installation
+# Notes       : Do not run on NetBSD, -v is unknown option for httpd binary
+if [ ! "${OS}" = "NetBSD" ]; then
+	PREQS_MET="YES"
+else
+	PREQS_MET="NO"
+fi
+Register --test-no HTTP-6622 --preqs-met ${PREQS_MET} --weight L --network NO --description "Checking Apache presence"
+if [ ${SKIPTEST} -eq 0 ]; then
+	HTTPDBINARY=$(${PSBINARY} ax|grep -E "httpd|[aA]pache"| grep -vE "grep|DNOHTTPACCEPT" | head -n1 | awk '{print $5}')
+	if [ "${HTTPDBINARY}" = "" ]; then
+		Display --indent 2 --text "- Checking Apache..." --result "NOT FOUND" --color WHITE
+	else
+		logtext "Test: Scanning for Apache binary..."
+		IS_APACHE=`${HTTPDBINARY} -v | egrep '[aA]pache'`
+		if [ "${IS_APACHE}" = "" ]; then
+			logtext "Result: ${HTTPDBINARY} is not Apache"
+			Display --indent 2 --text "- Checking Apache (binary ${HTTPDBINARY})..." --result "NO MATCH" --color WHITE
+		else
+			Display --indent 2 --text "- Checking Apache (binary ${HTTPDBINARY})..." --result "FOUND" --color GREEN
+			logtext "Result: ${HTTPDBINARY} seems to be Apache HTTP daemon"
+			APACHE_INSTALLED=1
+		fi
+	fi
+fi
+#
+#################################################################################
+#
+# Test        : HTTP-6624
+# Description : Testing main Apache configuration file
+# Notes       : Do not run on NetBSD, -V is unknown option for httpd binary
+if [ ${APACHE_INSTALLED} -eq 1 ]; then
+	if [ ! "${OS}" = "NetBSD" ]; then
+		PREQS_MET="YES"
+	else
+		PREQS_MET="NO"
+	fi
+else
+	PREQS_MET="NO"
+fi
+Register --test-no HTTP-6624 --preqs-met ${PREQS_MET} --weight L --network NO --description "Testing main Apache configuration file"
+if [ ${SKIPTEST} -eq 0 ]; then
+	APACHE_CONFIGFILE=""
+	APACHE_TEST=`${HTTPDBINARY} -V | grep "\-D SERVER_CONFIG_FILE=" | sed 's/[ ]-D SERVER_CONFIG_FILE=//' | tr -d '"' | tr -d ' '`
+
+	if [ "${APACHE_TEST}" = "" ]; then
+		Display --indent 6 --text "Result: Can't find the configuration file, so skipping some Apache related tests"
+	else
+		# We found a possible match. Checking if it's valid filename. If not, we need to add a prefix
+		if [ -f ${APACHE_TEST} ]; then
+			APACHE_CONFIGFILE="${APACHE_TEST}"
+			Display --indent 6 --text "Info: Configuration file found (${APACHE_CONFIGFILE})"
+		else
+			# Probably the prefix is missing, so we are going to search that
+			APACHE_HTTPDROOT=`${HTTPDBINARY} -V | grep "\-D HTTPD_ROOT=" | sed 's/[ ]-D HTTPD_ROOT=//' | tr -d '"' | tr -d ' '`
+			#echo "Apache root prefix: ${APACHE_HTTPDROOT}"
+			#echo "Complete path to configuration file: ${APACHE_HTTPDROOT}/${APACHE_TEST}"
+			APACHE_TESTFILE="${APACHE_HTTPDROOT}/${APACHE_TEST}"
+			if [ -f ${APACHE_TESTFILE} ]; then
+				APACHE_CONFIGFILE="${APACHE_TESTFILE}"
+				Display --indent 6 --text "Info: Configuration file found (${APACHE_CONFIGFILE})"
+				logtext "Result: Configuration file found (${APACHE_CONFIGFILE})"
+			else
+				Display --indent 6 --text "[Notice] possible directory/file parts found, but still unsure what the real configuration file is. Skipping some Apache related tests"
+			fi
+		fi
+	fi
+fi
+#
+#################################################################################
+#
+# Test        : HTTP-6626
+# Description : Testing other Apache configuration files
+if [ ${APACHE_INSTALLED} -eq 1 ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
+Register --test-no HTTP-6626 --preqs-met ${PREQS_MET} --weight L --network NO --description "Testing other Apache configuration file"
+if [ ${SKIPTEST} -eq 0 ]; then
+	APACHE_INCLUDE=`awk -v a="${APACHE_HTTPDROOT}/" '/^Include/{print a $2}' ${APACHE_CONFIGFILE}`
+	#Display --indent 4 --text "- Searching Apache virtual hosts..."
+	for I in ${APACHE_INCLUDE}; do
+		if [ -d ${I} ]; then
+			find ${I} -type f -print >> ${TMPFILE}.unsorted
+			find ${I} -type l -print >> ${TMPFILE}.unsorted
+		else if [ -f ${I} ]; then
+			echo "${I}" >> ${TMPFILE}.unsorted
+		fi
+	fi
+done
+
+# Sort unsorted list, save it in temp file and then remove unsorted list
+if [ -f ${TMPFILE}.unsorted ]; then
+	sort ${TMPFILE}.unsorted | uniq | grep -v mod >> ${TMPFILE}
+	rm -f ${TMPFILE}.unsorted
+fi
+a=`cat ${TMPFILE}`
+# Check every configuration file
+fi
+
+# Remove temp file
+if [ -f ${TMPFILE} -a ! "${TMPFILE}" = "" ]; then
+	rm -f ${TMPFILE}
+fi
+
+#
+#################################################################################
+#
+# Test        : HTTP-6628
+# Description : Testing other Apache configuration files
+if [ ${APACHE_INSTALLED} -eq 1 ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
+Register --test-no HTTP-6628 --preqs-met ${PREQS_MET} --weight L --network NO --description "Testing other Apache configuration file"
+if [ ${SKIPTEST} -eq 0 ]; then
+	# Configuration specific tests
+	SERVERTOKENSFOUND=0
+	APACHE_CONFIGFILES="${APACHE_CONFIGFILE} ${a[@]} /usr/local/etc/apache22/extra/httpd-default.conf /etc/apache2/sysconfig.d/global.conf"
+
+	for i in ${APACHE_CONFIGFILES}; do
+		if [ -f ${i} ]; then	            
+			# Check if option ServerTokens is configured
+			SERVERTOKENSTEST=`cat ${i} | grep ServerTokens | grep -v '^#'`
+			if [ ! "${SERVERTOKENSTEST}" = "" ]; then
+				Display --indent 4 --text "- Checking option ServerTokens..." --result FOUND --color WHITE
+				SERVERTOKENSTEST=`echo ${SERVERTOKENSTEST} | sed 's/ServerTokens//' | tr -d ' '`
+				logtext "Option ServerTokens found: ${SERVERTOKENSTEST}"
+				SERVERTOKENSEXPECTED=`cat ${PROFILE} | grep 'apache' | grep 'ServerTokens' | cut -d ':' -f3`
+				if [ "${SERVERTOKENSEXPECTED}" = "${SERVERTOKENSTEST}" ]; then
+					logtext "Result: Value from configuration file yielded the same output as in template"
+					SERVERTOKENSFOUND=1
+				else
+					logtext "Warning: Value of ServerTokens within active configuration is different than from used template."
+					logtext "Found: ${SERVERTOKENSTEST}"
+					logtext "Expected: ${SERVERTOKENSEXPECTED}"
+				fi
+
+			fi
+
+		else
+			# File does not exist, skipping
+			logtext "File ${i} does not exist, so skipping tests on this file"
+		fi
+	done
+	#    	    
+	#    	    # Display results from checks
+	if [ ${SERVERTOKENSFOUND} -eq 1 ]; then
+		Display --indent 6 --text "- Value of ServerTokens..." --result OK --color GREEN
+		AddHP 1 1
+	else	    
+		Display --indent 6 --text "- Value of ServerTokens..." --result WARNING --color RED
+		ReportWarning ${TEST_NO} "M" "Value of 'ServerTokens' in Apache config is different than template"
+		AddHP 0 1
+	fi
+fi
+#
+#################################################################################
+#
+# Test        : HTTP-6629
+# Description : Check Apache configuration files TraceEnable option
+
+check_opt_name="TraceEnable"
+FOUND=0
+
+if [ ${APACHE_INSTALLED} -eq 1 ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
+Register --test-no HTTP-6629 --preqs-met ${PREQS_MET} --weight L --network NO --description "Checking  Apache configuration files ${check_opt_name} option"
+if [ ${SKIPTEST} -eq 0 ]; then
+	# Configuration specific tests
+	APACHE_CONFIGFILES="${APACHE_CONFIGFILE} ${a[@]} /usr/local/etc/apache22/extra/httpd-default.conf /etc/apache2/sysconfig.d/global.conf"
+
+	for i in ${APACHE_CONFIGFILES}; do
+		if [ -f ${i} ]; then	            
+			FIND=` grep "^${check_opt_name}" ${i}|awk '{print $2}' `
+			if [ "${FIND}" = "Off" -o "${FIND}" = "off" ]; then
+				FOUND=1
+			fi
+		fi
+	done
+
+	if [ ${FOUND} -eq 1 ];then
+		Display --indent 4 --text "- Checking option ${check_opt_name}..." --result DISABLED --color GREEN
+		logtext "${check_opt_name} is disabled"
+		AddHP 1 1
+	else
+		Display --indent 4 --text "- Checking option ${check_opt_name}..." --result ENABLE --color RED
+		AddHP 0 1
+		ReportWarning ${TEST_NO} "M" "${check_opt_name} is enabled"
+	fi
+fi
+#
+#################################################################################
+#
+# Test        : HTTP-6630
+# Description : Check Apache configuration files ServerSignature option
+
+check_opt_name="ServerSignature"
+FOUND=0
+if [ ${APACHE_INSTALLED} -eq 1 ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
+Register --test-no HTTP-6629 --preqs-met ${PREQS_MET} --weight L --network NO --description "Checking  Apache configuration files ${check_opt_name} option"
+if [ ${SKIPTEST} -eq 0 ]; then
+	# Configuration specific tests
+	APACHE_CONFIGFILES="${APACHE_CONFIGFILE} ${a[@]} /usr/local/etc/apache22/extra/httpd-default.conf /etc/apache2/sysconfig.d/global.conf"
+
+	for i in ${APACHE_CONFIGFILES}; do
+		if [ -f ${i} ]; then	            
+			FIND=` grep "^${check_opt_name}" ${i}|awk '{print $2}' `
+			if [ "${FIND}" = "Off" ]; then
+				FOUND=1
+			fi
+		fi
+	done
+
+	if [ ${FOUND} -eq 1 ];then
+		Display --indent 4 --text "- Checking option ${check_opt_name}..." --result DISABLED --color GREEN
+		logtext "${check_opt_name} is disabled"
+		AddHP 1 1
+	else
+		Display --indent 4 --text "- Checking option ${check_opt_name}..." --result ENABLE --color RED
+		AddHP 0 1
+		ReportWarning ${TEST_NO} "M" "${check_opt_name} is enabled"
+	fi
+fi
+
+#################################################################################
+#
+# Test        : HTTP-6702
+# Description : Search for nginx process
+Register --test-no HTTP-6702 --weight L --network NO --description "Check nginx process"
+if [ ${SKIPTEST} -eq 0 ]; then
+	logtext "Test: searching running nginx process"
+	FIND=`${PSBINARY} ax | grep "/nginx" | grep "master" | grep -v "grep"`
+	if [ ! "${FIND}" = "" ]; then
+		logtext "Result: found running nginx process(es)"
+		Display --indent 2 --text "- Checking nginx..." --result FOUND --color GREEN
+		NGINX_RUNNING=1
+	else
+		logtext "Result: no running nginx process found"
+		Display --indent 2 --text "- Checking nginx..." --result "NOT FOUND" --color WHITE
+	fi
+fi
+#
+#################################################################################
+#
+# Test        : HTTP-6704
+# Description : Search for nginx configuration file
+if [ ${NGINX_RUNNING} -eq 1 ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
+Register --test-no HTTP-6704 --preqs-met ${PREQS_MET} --weight L --network NO --description "Check nginx configuration file"
+if [ ${SKIPTEST} -eq 0 ]; then
+	logtext "Test: searching nginx configuration file"
+	#YYY warning if multiple nginx.conf files are found
+	for I in ${NGINX_CONF_LOCS}; do
+		if [ -f ${I}/nginx.conf ]; then
+			NGINX_CONF_LOCATION="${I}/nginx.conf"
+			logtext "Found file ${NGINX_CONF_LOCATION}"
+		fi
+	done
+	#YYY strings /usr/sbin/nginx | grep "conf$"
+	if [ ! "${NGINX_CONF_LOCATION}" = "" ]; then
+		logtext "Result: found nginx configuration file"
+		report "nginx_conf_file=${NGINX_CONF_LOCATION}"
+		Display --indent 4 --text "- Searching nginx configuration file..." --result FOUND --color GREEN
+		#YYY search include statements for additional configuration files
+	else
+		logtext "Result: no nginx configuration file found"
+		Display --indent 2 --text "- Searching nginx configuration file..." --result "NOT FOUND" --color WHITE
+	fi
+fi
+#
+#################################################################################
+#
+# Test        : HTTP-6706
+# Description : Check nginx server_tokens options
+if [ ${NGINX_RUNNING} -eq 1 -a ! "${NGINX_CONF_LOCATION}" = "" ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
+Register --test-no HTTP-6706 --preqs-met ${PREQS_MET} --weight L --network NO --description "Check nginx option: server_tokens"
+if [ ${SKIPTEST} -eq 0 ]; then
+	logtext "Test: check server_tokens option"
+	FIND=`cat ${NGINX_CONF_LOCATION} | grep -v "#"|grep "server_tokens" | awk '{ print $2 }'|sed s#\;##g`
+	if [ "${FIND}" = "on"  ]; then
+		logtext "Result: server_tokens enabled, can get server version"
+		Display --indent 4 --text "- nginx option: server_tokens..." --result WARNING --color RED
+		ReportWarning ${TEST_NO} "M" "can get server version"
+		AddHP 0 1
+	else
+		# YYY add test for DenyUsers root
+		if [ "${FIND}" = "off" ]; then
+			logtext "Result: server_tokens is disabled. can't get server version"
+			Display --indent 4 --text "- nginx option: server_tokens..." --result DISABLED --color GREEN
+			AddHP 1 1
+		else	
+			logtext "Result: Value of server_tokens is unknown (not defined)"
+			Display --indent 4 --text "- nginx option: server_tokens..." --result "NOT FOUND" --color RED
+			AddHP 0 1
+		fi
+	fi
+fi
+
+
+#################################################################################
+#
+
+wait_for_keypress
+
+#
+#================================================================================
+# Lynis - Copyright 2007-2014, Michael Boelen - www.rootkit.nl - The Netherlands

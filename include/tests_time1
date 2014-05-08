@@ -1,0 +1,203 @@
+#!/bin/sh
+#AUTHOR=zcola
+
+#################################################################################
+#
+InsertSection "Time and Synchronization"
+#
+#################################################################################
+#
+NTP_DAEMON=""
+NTP_DAEMON_RUNNING=0
+NTP_CONFIG_FOUND=0
+NTP_DAEMON_CONFIG="/etc/ntp.conf"
+NTP_CONFIG_TYPE_DAEMON=0
+NTP_CONFIG_TYPE_SCHEDULED=0
+NTP_CONFIG_TYPE_EVENTBASED=0
+NTP_CONFIG_TYPE_STARTUP=0
+# Specific for ntpd
+NTPD_RUNNING=0
+CRON_DIRS="/etc/cron.d /etc/cron.hourly /etc/cron.daily /etc/cron.weekly /etc/cron.monthly /var/spool/crontabs"
+#
+#################################################################################
+#
+# Test        : TIME-3104
+# Description : Check for a running NTP daemon
+if [ -f /sys/hypervisor/type ]; then
+	# Skip NTP tests if we are in a DomU xen instance YYY
+	FIND=`cat /sys/hypervisor/type`
+	if [ "${FIND}" = "xen" ]; then PREQS_MET="NO"; else PREQS_MET="YES"; fi
+else
+	PREQS_MET="YES"
+fi
+
+if [ $OS = "FreeBSD" ]; then
+	if [ "`sysctl -a sysctl security.jail.jailed|awk '{print $2}'`" = "0" ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
+else
+	PREQS_MET="YES"
+fi
+
+Register --test-no TIME-3104 --preqs-met ${PREQS_MET} --weight L --network NO --description "Check for running NTP daemon or client"
+if [ ${SKIPTEST} -eq 0 ]; then
+	# Linux/FreeBSD (ntpdate), OpenBSD (ntpd, rdate)
+	logtext "Test: Searching for a running NTP daemon or available client... "
+	FOUND=0
+
+	# Check running processes
+	FIND=`${PSBINARY} ax | grep "ntpd" | grep -v "dntpd" | grep -v "grep"`
+	if [ ! "${FIND}" = "" ]; then
+		FOUND=1; NTPD_RUNNING=1; NTP_DAEMON_RUNNING=1; NTP_CONFIG_TYPE_DAEMON=1
+		NTP_DAEMON="ntpd"
+		logtext "Result: found running NTP daemon in process list"
+		Display --indent 2 --text "- Checking running NTP daemon (ntpd)..." --result FOUND --color GREEN
+	else
+		logtext "Result: NTP daemon not found in process list"
+		Display --indent 2 --text "- Checking running NTP daemon (ntpd)..." --result "NOT FOUND" --color WHITE
+	fi
+
+	# Check time daemon (eg NetBSD)
+	IsRunning timed
+	if [ ${RUNNING} -eq 1 ]; then
+		FOUND=1; NTP_DAEMON_RUNNING=1; NTP_CONFIG_TYPE_DAEMON=1; NTP_DAEMON="timed"
+		Display --indent 2 --text "- Checking running NTP daemon (timed)..." --result FOUND --color GREEN
+	else
+		Display --indent 2 --text "- Checking running NTP daemon (timed)..." --result "NOT FOUND" --color WHITE
+	fi
+
+	# Check time daemon (eg DragonFly BSD)
+	IsRunning dntpd
+	if [ ${RUNNING} -eq 1 ]; then
+		FOUND=1; NTP_DAEMON_RUNNING=1; NTP_CONFIG_TYPE_DAEMON=1; NTP_DAEMON="dntpd"
+		Display --indent 2 --text "- Checking running NTP daemon (dntpd)..." --result FOUND --color GREEN
+	else
+		Display --indent 2 --text "- Checking running NTP daemon (dntpd)..." --result "NOT FOUND" --color WHITE
+	fi
+
+	# Check crontab for OpenBSD/FreeBSD
+	# Check anacrontab for Linux
+	CRONTAB_FILES="/etc/anacrontab /etc/crontab"
+	for I in ${CRONTAB_FILES}; do
+		if [ -f ${I} ]; then
+			logtext "Test: checking for ntpdate or rdate in crontab file ${I}"
+			FIND=`cat ${I} | ${EGREPBINARY} "ntpdate|rdate" | grep -v '^#'`
+			if [ ! "${FIND}" = "" ]; then
+				FOUND=1;
+				NTP_CONFIG_TYPE_SCHEDULED=1
+				Display --indent 2 --text "- Checking NTP client in crontab file (${I})..." --result FOUND --color GREEN
+				logtext "Result: found ntpdate or rdate reference in crontab file ${I}"
+			else
+				Display --indent 2 --text "- Checking NTP client in crontab file (${I})..." --result "NOT FOUND" --color WHITE
+				logtext "Result: no ntpdate or rdate reference found in crontab file ${I}"
+			fi
+		else
+			logtext "Result: crontab file ${I} not found"
+		fi
+	done
+
+	##########################
+	# To do: test on Solaris #
+	##########################
+
+	# Don't run check in cron job directory on Solaris
+	# /etc/cron.d/FIFO is a special file and test get stuck at this file
+	FOUND_IN_CRON=0
+
+	# Check cron jobs
+	for I in ${CRON_DIRS}; do
+		if [ -d ${I} ]; then
+			FIND=`ls ${I} | grep -v FIFO`
+			if [ ! "${FIND}" = "" ]; then
+				for J in ${FIND}; do
+					logtext "Test: checking for ntpdate or rdate in ${I}/${J}"
+					FIND2=`${EGREPBINARY} "rdate|ntpdate" ${I}/${J} | grep -v "^#"`
+					if [ ! "${FIND2}" = "" ]; then
+						logtext "Positive match found: ${FIND2}"
+						FOUND=1; FOUND_IN_CRON=1; NTP_CONFIG_TYPE_SCHEDULED=1
+					fi
+				done
+			else
+				logtext "Result: ${I} is empty, skipping search in directory"
+			fi
+		fi
+	done
+
+	if [ ${FOUND_IN_CRON} -eq 1 ]; then
+		Display --indent 2 --text "- Checking NTP client in cron files..." --result FOUND --color GREEN
+		logtext "Result: found ntpdate or rdate in cron directory"
+	else
+		Display --indent 2 --text "- Checking NTP client in cron.d files..." --result "NOT FOUND" --color WHITE
+		logtext "Result: no ntpdate or rdate found in cron directories"
+	fi
+
+
+	# Checking if ntpdate is performed by event
+	logtext "Test: checking for file /etc/network/if-up.d/ntpdate"
+	if [ -f /etc/network/if-up.d/ntpdate ]; then
+		logtext "Result: found ntpdate action when network interface comes up"
+		FOUND=1
+		NTP_CONFIG_TYPE_EVENTBASED=1
+		Display --indent 2 --text "- Checking event based ntpdate (if-up)..." --result FOUND --color GREEN
+	else
+		logtext "Result: file /etc/network/if-up.d/ntpdate does not exist"
+	fi
+
+	if [ "${OS}" = "FreeBSD" ]; then
+		logtext "Test: Checking if ntpdate is enabled at startup in FreeBSD"
+		if [ -f /etc/rc.conf ]; then
+			FIND=`grep 'ntpdate_enable="YES"' /etc/rc.conf`
+			if [ ! "${FIND}" = "" ]; then
+				logtext "Result: ntpdate is enabled in rc.conf"
+				# Mark system having a NTP client, but remind user to improve it
+				FOUND=1
+				NTP_CONFIG_TYPE_STARTUP=1
+				ReportSuggestion ${TEST_NO} "Although ntpdate is enabled in rc.conf, it is adviced to run it at least daily or use a NTP daemon"
+			else
+				logtext "Result: ntpdate is not enabled in rc.conf"
+			fi
+		fi
+	fi
+
+	if [ ${FOUND} -eq 0 ]; then
+		Display --indent 2 --text "- Checking for a running NTP daemon or client..." --result WARNING --color RED
+		logtext "Result: Could not find a NTP daemon or client"
+		ReportSuggestion ${TEST_NO} "Use NTP daemon or NTP client to prevent time issues."
+		AddHP 0 2
+	else
+		Display --indent 2 --text "- Checking for a running NTP daemon or client..." --result OK --color GREEN
+		logtext "Result: Found a time syncing daemon/client."
+		AddHP 3 3
+	fi
+fi
+#
+#################################################################################
+#
+# Test        : TIME-7420
+# Description : Check restrict option
+
+if [ ${NTP_DAEMON_RUNNING} -eq 1 -a ! "${NTP_DAEMON_CONFIG}" = "" ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
+Register --test-no TIME-7420 --preqs-met ${PREQS_MET} --weight L --network NO --description "Check SSH option: restrict"
+if [ ${SKIPTEST} -eq 0 ]; then
+	logtext "Test: Checking restrict option"
+	FIND=`grep "^restrict" ${NTP_DAEMON_CONFIG}`
+	if echo "$FIND"|grep -q "restrict 127.0.0.1" && echo "$FIND"|grep -q "default kod nomodify notrap nopeer noquery"; then
+		
+		logtext "Result: restrict is enabled"
+		Display --indent 4 --text "- ntp option: restrict..." --result FOUND --color GREEN
+		AddHP 1 1
+	else	
+		logtext "Result: Value of restrict is uncorrect (not defined)"
+		Display --indent 4 --text "- ntp option: restrict..." --result "NOT FOUND" --color RED
+		ReportWarning ${TEST_NO} "M" "Value of restrict is uncorrect"
+		AddHP 0 1
+	fi
+fi
+#################################################################################
+#
+
+wait_for_keypress
+
+#
+#################################################################################
+#
+    report "ntp_daemon=${NTP_DAEMON}"
+    report "ntp_daemon_running=${NTP_DAEMON_RUNNING}"

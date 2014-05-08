@@ -1,0 +1,210 @@
+#!/bin/sh
+#AUTHOR=zcola
+#################################################################################
+#
+# SSH
+#
+#################################################################################
+#
+SSH_DAEMON_CONFIG_LOCS="/etc /etc/ssh /usr/local/etc/ssh /opt/csw/etc/ssh"
+SSH_DAEMON_CONFIG=""
+SSH_DAEMON_PORT=""
+SSH_DAEMON_RUNNING=0
+#
+#################################################################################
+#
+InsertSection "SSH Support"
+#
+#################################################################################
+#
+# Test        : SSH-7402
+# Description : Check for a running SSH daemon
+Register --test-no SSH-7402 --weight L --network NO --description "Check for running SSH daemon"
+if [ ${SKIPTEST} -eq 0 ]; then
+	logtext "Test: Searching for a SSH daemon..."
+	IsRunning sshd
+	if [ ${RUNNING} -eq 1 ]; then
+		SSH_DAEMON_RUNNING=1
+		Display --indent 2 --text "- Checking running SSH daemon..." --result FOUND --color GREEN
+	else
+		Display --indent 2 --text "- Checking running SSH daemon..." --result "NOT FOUND" --color WHITE
+	fi
+fi
+#
+#################################################################################
+#
+# Test        : SSH-7404
+# Description : Determine SSH daemon configuration file location
+if [ ${SSH_DAEMON_RUNNING} -eq 1 ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
+Register --test-no SSH-7404 --preqs-met ${PREQS_MET} --weight L --network NO --description "Check SSH daemon file location"
+if [ ${SKIPTEST} -eq 0 ]; then
+	FOUND=0
+	logtext "Action: searching for sshd_config file"
+	for I in ${SSH_DAEMON_CONFIG_LOCS}; do
+		if [ -f "${I}/sshd_config" ]; then
+			logtext "Result: ${I}/sshd_config exists"
+			if [ ${FOUND} -eq 1 ]; then
+				ReportException "${TEST_NO}:01"
+				logtext "Result: we already had found another sshd_config file. Using this new file then."
+			fi
+			FOUND=1
+			SSH_DAEMON_CONFIG="${I}/sshd_config"
+		fi
+	done
+	if [ "${SSH_DAEMON_CONFIG}" = "" ]; then
+		logtext "Result: No sshd configuration found"
+		Display --indent 4 --text "- Searching SSH configuration..." --result "NOT FOUND" --color YELLOW
+	else
+		logtext "Result: using last found configuration file: ${SSH_DAEMON_CONFIG}"
+		Display --indent 4 --text "- Searching SSH configuration..." --result FOUND --color GREEN
+	fi
+fi
+#
+#################################################################################
+#
+#    # Test        : SSH-7406
+#    # Description : Check for a running SSH port
+check_opt_name="Port"
+
+if [ ${SSH_DAEMON_RUNNING} -eq 1 -a ! "${SSH_DAEMON_CONFIG}" = "" ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
+Register --test-no SSH-7406 --preqs-met ${PREQS_MET} --weight L --network NO --description "SSH daemon listening port"
+if [ ${SKIPTEST} -eq 0 ]; then
+	logtext "Test: Searching for a SSH port..."
+	FIND=`awk '{ if ($1=="'"${check_opt_name}"'") { print $2 }}' ${SSH_DAEMON_CONFIG}`
+	if ! [ -z "$FIND" ]; then
+		if [ $FIND = "32200" ]; then
+			Display --indent 2 --text "- Checking SSH listening port..." --result FOUND --color GREEN
+			logtext "Result: setting port number to ${FIND}"
+			SSH_DAEMON_PORT="${FIND}"
+			AddHP 3 3
+		else
+			Display --indent 2 --text "- Checking SSH listening port..." --result FOUND --color RED
+			logtext "Result: setting port number to ${FIND} not 32200"
+			SSH_DAEMON_PORT="${FIND}"
+			ReportWarning ${TEST_NO} "M" "Not a universal standard definition ssh port 32200"
+			AddHP 0 3
+		fi
+	else
+		Display --indent 2 --text "- Checking SSH listening port..." --result "NOT FOUND" --color RED
+		logtext "Result: setting port to default number, as no other port has been configured"
+		SSH_DAEMON_PORT="22"
+		ReportWarning ${TEST_NO} "M" "Not a universal standard definition ssh port 32200"
+		AddHP 0 3
+	fi
+fi
+#
+#################################################################################
+#
+# Test        : SSH-7412
+# Description : Check SSH PermitRootLogin option
+check_opt_name="PermitRootLogin"
+
+if [ ${SSH_DAEMON_RUNNING} -eq 1 -a ! "${SSH_DAEMON_CONFIG}" = "" ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
+Register --test-no SSH-7412 --preqs-met ${PREQS_MET} --weight L --network NO --description "Check SSH option: PermitRootLogin"
+if [ ${SKIPTEST} -eq 0 ]; then
+	logtext "Test: check PermitRootLogin option"
+	FIND=`awk '{ if ($1=="'"${check_opt_name}"'") { print $2 }}' ${SSH_DAEMON_CONFIG}`
+	if [ "${FIND}" = "yes" -o "${FIND}" = "YES" -o "${FIND}" = "Yes" ]; then
+		logtext "Result: ${check_opt_name} is enabled, root can login directly"
+		Display --indent 4 --text "- SSH option: ${check_opt_name}..." --result WARNING --color RED
+		ReportWarning ${TEST_NO} "M" "Root can directly login via SSH"
+		AddHP 0 3
+	elif [ "${FIND}" = "no" -o "${FIND}" = "No" ]; then
+		logtext "Result: ${check_opt_name} is disabled. Root can't login directly"
+		Display --indent 4 --text "- SSH option: ${check_opt_name}..." --result DISABLED --color GREEN
+		AddHP 3 3
+	else	
+		logtext "Result: Value of ${check_opt_name} is unknown (not defined)"
+		Display --indent 4 --text "- SSH option: ${check_opt_name}..." --result DEFAULT --color RED
+		AddHP 0 3
+	fi
+fi
+#
+#################################################################################
+#
+# Test        : SSH-7414
+# Description : Check SSH Protocol option
+check_opt_name="Protocol"
+
+if [ ${SSH_DAEMON_RUNNING} -eq 1 -a ! "${SSH_DAEMON_CONFIG}" = "" ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
+Register --test-no SSH-7414 --preqs-met ${PREQS_MET} --weight L --network NO --description "Check SSH option: Protocol"
+if [ ${SKIPTEST} -eq 0 ]; then
+	logtext "Test: check allowed SSH protocol versions"
+	FIND=`awk '{ if ($1=="'"${check_opt_name}"'") { print $2 }}' ${SSH_DAEMON_CONFIG}`
+	if [ "${FIND}" = "1" -o "${FIND}" = "2,1" -o "${FIND}" = "1,2" ]; then
+		logtext "Result: Protocol option is set to allow SSH protocol version 1"
+		Display --indent 4 --text "- SSH option: ${check_opt_name}..." --result WARNING --color RED
+		ReportWarning ${TEST_NO} "M" "SSH protocol version 1 is allowed"
+		AddHP 0 3
+	elif [ "${FIND}" = "2" ]; then
+		logtext "Result: only protocol 2 is allowed"
+		Display --indent 4 --text "- SSH option: ${check_opt_name}..." --result OK --color GREEN
+		AddHP 3 3
+	else	
+		logtext "Result: value of Protocol is unknown (not defined)"
+		Display --indent 4 --text "- SSH option: ${check_opt_name}..." --result DEFAULT --color RED
+		AddHP 0 3
+	fi
+fi
+#
+#################################################################################
+#
+# Test        : SSH-7418
+# Description : Check SSH PasswordAuthentication option
+check_opt_name="PasswordAuthentication"
+
+if [ ${SSH_DAEMON_RUNNING} -eq 1 -a ! "${SSH_DAEMON_CONFIG}" = "" ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
+Register --test-no SSH-7418 --preqs-met ${PREQS_MET} --weight L --network NO --description "Check SSH option: ${check_opt_name}"
+if [ ${SKIPTEST} -eq 0 ]; then
+	logtext "Test: Checking ${check_opt_name} option"
+	FIND=`awk '{ if ($1=="'"${check_opt_name}"'") { print $2 }}' ${SSH_DAEMON_CONFIG}`
+	if [ "${FIND}" = "yes" -o "${FIND}" = "YES" -o "${FIND}" = "Yes" ]; then
+		logtext "Result: ${check_opt_name} is enabled, users can password login"
+		Display --indent 4 --text "- SSH option: ${check_opt_name}..." --result WARNING --color RED
+		ReportWarning ${TEST_NO} "M" "users can directly login by password"
+		AddHP 0 3
+	elif [ "${FIND}" = "no" -o "${FIND}" = "No" ]; then
+		logtext "Result: ${check_opt_name} is disabled. users can't login by password"
+		Display --indent 4 --text "- SSH option: PasswordAuthentication..." --result DISABLED --color GREEN
+		AddHP 3 3
+	else	
+		logtext "Result: Value of ${check_opt_name} is unknown (not defined)"
+		Display --indent 4 --text "- SSH option: ${check_opt_name}..." --result DEFAULT --color RED
+		AddHP 0 3
+	fi
+fi
+#
+#################################################################################
+#
+# Test        : SSH-7420
+# Description : Check SSH UseDNS option
+check_opt_name="UseDNS"
+
+if [ ${SSH_DAEMON_RUNNING} -eq 1 -a ! "${SSH_DAEMON_CONFIG}" = "" ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
+Register --test-no SSH-7420 --preqs-met ${PREQS_MET} --weight L --network NO --description "Check SSH option: ${check_opt_name}"
+if [ ${SKIPTEST} -eq 0 ]; then
+	logtext "Test: Checking ${check_opt_name} option"
+	FIND=`awk '{ if ($1=="'"${check_opt_name}"'") { print $2 }}' ${SSH_DAEMON_CONFIG}`
+	if [ "${FIND}" = "yes" ]; then
+		logtext "Result: ${check_opt_name} is enabled, SSH connection may be slow"
+		Display --indent 4 --text "- SSH option: ${check_opt_name}..." --result WARNING --color RED
+		ReportWarning ${TEST_NO} "M" "SSH connection may be slow"
+		AddHP 0 1
+	elif [ "${FIND}" = "no" -o "${FIND}" = "No" ]; then
+		logtext "Result: ${check_opt_name} is disabled. fix slow SSH connections "
+		Display --indent 4 --text "- SSH option: UseDns..." --result DISABLED --color GREEN
+		AddHP 1 1
+	else	
+		logtext "Result: Value of ${check_opt_name} is unknown (not defined)"
+		Display --indent 4 --text "- SSH option: ${check_opt_name}..." --result DEFAULT --color RED
+		AddHP 0 1
+	fi
+fi
+#
+
+report "ssh_daemon_running=${SSH_DAEMON_RUNNING}"
+report "ssh_daemon_port=${SSH_DAEMON_PORT}"
+
+wait_for_keypress
+#
+#================================================================================
