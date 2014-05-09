@@ -378,39 +378,6 @@
 #
 #################################################################################
 #
-    # Test        : FILE-6410
-    # Description : Checking locate database (file index)
-    # Notes       : Linux     /var/lib/mlocate/mlocate.db or /var/lib/slocate/slocate.db
-    #                       or /var/cache/locate/locatedb
-    #               FreeBSD /var/db/locate.database
-    if [ ! "${LOCATEBINARY}" = "" ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
-    Register --test-no FILE-6410 --os Linux --weight L --network NO --description "Checking Locate database"
-    if [ ${SKIPTEST} -eq 0 ]; then
-        logtext "Test: Checking locate database"
-        FOUND=0
-        LOCATE_DBS="/var/lib/mlocate/mlocate.db /var/lib/locatedb /var/lib/slocate/slocate.db /var/cache/locate/locatedb /var/db/locate.database"
-        for I in ${LOCATE_DBS}; do
-            if [ -f ${I} ]; then
-                logtext "Result: locate database found (${I})"
-                FOUND=1
-                LOCATE_DB="${I}"
-              else
-                logtext "Result: file ${I} not found"
-            fi
-        done
-        if [ ${FOUND} -eq 1 ]; then
-            Display --indent 2 --text "- Checking Locate database..." --result FOUND --color GREEN
-            report "locate_db=${LOCATE_DB}"
-          else
-            logtext "Result: database not found"
-            Display --indent 2 --text "- Checking Locate database..." --result "NOT FOUND" --color YELLOW
-            ReportSuggestion ${TEST_NO} "The database required for 'locate' could not be found. Run 'updatedb' or 'locate.updatedb' to create this file."
-        fi
-    fi
-#
-
-#################################################################################
-#
 
 
 wait_for_keypress

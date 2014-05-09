@@ -231,7 +231,7 @@
 #
     # Test        : KRNL-5730
     # Description : Checking default I/O kernel scheduler
-    if [ ! "${LINUXCONFIGFILE}" = "" -a -f ${LINUXCONFIGFILE} ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
+    if [ ! "${LINUXCONFIGFILE}" = "" ]; then if [ -f ${LINUXCONFIGFILE} ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi;else PREQS_MET="NO";fi
     Register --test-no KRNL-5730 --os Linux --preqs-met ${PREQS_MET} --weight L --network NO --description "Checking disk I/O kernel scheduler"
     if [ ${SKIPTEST} -eq 0 ]; then
         logtext "Test: Checking the default I/O kernel scheduler"
