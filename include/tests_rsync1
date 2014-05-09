@@ -74,6 +74,7 @@ if [ ${SKIPTEST} -eq 0 ]; then
 		else
 			logtext "Result: no rsyncd configuration file found"
 			Display --indent 2 --text "- Searching rsyncd configuration file..." --result "NOT FOUND" --color RED
+			report "rsync_conf_file=NOT FOUND"
 			AddHP 0 1
 		fi
 	fi

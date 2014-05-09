@@ -8,7 +8,6 @@
 #
     # Status of database processes
     MYSQL_RUNNING=0
-    POSTGRESQL_RUNNING=0
     # Paths to DATADIR
     sMYSQLDBPATHS="/var/lib/mysql"
     # Paths to my.cnf
@@ -35,22 +34,6 @@
 #
 #################################################################################
 #
-    # Test        : DBS-1808
-    # Description : Check MySQL data directory
-    #Register --test-no DBS-1808 --weight L --network NO --description "Checking MySQL data directory"
-    #if [ ${SKIPTEST} -eq 0 ]; then
-    #fi
-#
-#################################################################################
-#
-    # Test        : DBS-1812
-    # Description : Check data directory permissions
-    #Register --test-no DBS-1812 --weight L --network NO --description "Checking MySQL data directory permissions"
-    #if [ ${SKIPTEST} -eq 0 ]; then
-    #fi
-#
-#################################################################################
-#
     # Test        : DBS-1816
     # Description : Check empty MySQL root password
     # Notes       : Only perform test when MySQL is running and client is available
@@ -74,59 +57,6 @@
         logtext "Test skipped, MySQL daemon not running or no MySQL client available"
     fi
 #
-#################################################################################
-#
-    # Test        : DBS-1826
-    # Description : Check if PostgreSQL is being used
-    Register --test-no DBS-1826 --weight L --network NO --description "Checking active PostgreSQL processes"
-    if [ ${SKIPTEST} -eq 0 ]; then
-	FIND=`${PSBINARY} ax | grep "postgres:" | grep -v "grep"`
-	if [ "${FIND}" = "" ]; then
-	    Display --indent 2 --text "- PostgreSQL processes status..." --result "NOT FOUND" --color WHITE
-	    logtext "Result: PostgreSQL process not active"
-	  else
-	    Display --indent 2 --text "- PostgreSQL processes status..." --result "FOUND" --color GREEN
-	    logtext "Result: PostgreSQL is active"
-	    POSTGRESQL_RUNNING=1
-	fi
-    fi
-#
-#################################################################################
-#
-    # Test        : DBS-1840
-    # Description : Check if Oracle is being used
-    # Notes       : tnslsnr: Oracle listener
-    #               pmon: process monitor
-    #               smon: system monitor
-    #               dbwr: database writer
-    #               lgwr: log writer
-    #               arch: archiver (optional)
-    #               ckpt: checkpoint (optional)
-    #               reco: recovery (optional)
-    Register --test-no DBS-1840 --weight L --network NO --description "Checking active Oracle processes"
-    if [ ${SKIPTEST} -eq 0 ]; then
-	FIND=`${PSBINARY} ax | egrep "ora_pmon|ora_smon|tnslsnr" | grep -v "grep"`
-	if [ "${FIND}" = "" ]; then
-	    Display --indent 2 --text "- Oracle processes status..." --result "NOT FOUND" --color WHITE
-	    logtext "Result: Oracle process(es) not active"
-	  else
-	    Display --indent 2 --text "- Oracle processes status..." --result "FOUND" --color GREEN
-	    logtext "Result: Oracle is active"
-	    POSTGRESQL_RUNNING=1
-	fi
-    fi
-#
-#################################################################################
-#
-    # Test        : DBS-1842
-    # Description : Check Oracle home paths from oratab
-    #Register --test-no DBS-1842 --weight L --network NO --description "Checking Oracle home paths"
-    #if [ ${SKIPTEST} -eq 0 ]; then
-    # if [ -f /etc/oratab ]; then
-    #  FIND=`cat /etc/oratab | grep -v "#" | awk -F: "{ print $2 }"`
-    # fi
-    #fi
-
 wait_for_keypress
 
 #
