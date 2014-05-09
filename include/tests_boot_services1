@@ -1,0 +1,337 @@
+#!/bin/sh
+
+#################################################################################
+#
+# Category: Boot and services
+#
+#################################################################################
+#
+    InsertSection "Boot and services"
+#
+#################################################################################
+#
+    Display --indent 2 --text "- Checking boot loaders"
+    BOOT_LOADER="Unknown"
+#
+#################################################################################
+#
+    # Test        : BOOT-5121
+    # Description : Check for GRUB boot loader
+    Register --test-no BOOT-5121 --weight L --network NO --description "Check for GRUB boot loader presence"
+    if [ ${SKIPTEST} -eq 0 ]; then
+        FOUND=0
+        logtext "Test: Checking for presence GRUB conf file (/boot/grub/grub.conf or /boot/grub/menu.lst)..."
+        if [ -f /boot/grub/grub.conf -o -f /boot/grub/menu.lst ]; then
+            FOUND=1
+            BOOT_LOADER="GRUB"
+            Display --indent 4 --text "- Checking presence GRUB... " --result "OK" --color GREEN
+            if [ -f /boot/grub/grub.conf ]; then GRUBCONFFILE="/boot/grub/grub.conf"; else GRUBCONFFILE="/boot/grub/menu.lst"; fi
+            logtext "Found file ${GRUBCONFFILE}, proceeding with tests."
+            FIND=`cat ${GRUBCONFFILE} | grep 'password --md5' | grep -v '^#'`
+            if [ "${FIND}" = "" ]; then
+                Display --indent 6 --text "- Checking for password protection..." --result WARNING --color RED
+                logtext "Result: Didn't find MD5 hashed password line in GRUB boot file!"
+                logtext "Risk: user can switch to single user mode by editing current menu items or bypassing them."
+                logtext "Additional information: Do NOT use a plaintext password, since the grub.conf or menu.lst file is most likely to be world readable!"
+                logtext "If an unsecured OS like DOS is used, add 'lock' below that entry and setup a password with the password option, to prevent direct system access."
+                ReportWarning ${TEST_NO} "M" "No password set on GRUB bootloader"	
+                ReportSuggestion ${TEST_NO} "Run grub-md5-crypt and create a hashed password. Add a line below the line timeout=<value>, add: password --md5 <password hash>"
+                AddHP 0 2
+              else
+                Display --indent 6 --text "- Checking for password protection..." --result OK --color GREEN
+                logtext "Result: GRUB has password protection."
+                AddHP 4 4
+            fi
+        fi
+
+        # GRUB2 configuration file
+        if [ -f /boot/grub/grub.cfg ]; then
+            FOUND=1
+            BOOT_LOADER="GRUB2"
+            Display --indent 4 --text "- Checking presence GRUB2... " --result FOUND --color GREEN
+            logtext "Result: found GRUB2 configuration file (/boot/grub/grub.cfg)"
+            # YYY password check, when documentation of GRUB2 project is improved
+            # YYY Add check permission check (600)
+            ReportManual "${TEST_NO}:01"
+        fi
+
+        if [ ${FOUND} -eq 0 ]; then
+            Display --indent 4 --text "- Checking presence GRUB... " --result "NOT FOUND" --color WHITE
+            logtext "Result: no GRUB configuration file found."
+        fi
+    fi
+#
+#################################################################################
+#
+    # Test        : BOOT-5124
+    # Description : Check for FreeBSD boot loader
+    Register --test-no BOOT-5124 --os FreeBSD --weight L --network NO --description "Check for FreeBSD boot loader presence"
+    if [ ${SKIPTEST} -eq 0 ]; then
+        if [ -f /boot/boot1 -a -f /boot/boot2 -a -f /boot/loader ]; then
+            logtext "Result: found boot1, boot2 and loader files in /boot"
+            Display --indent 4 --text "- Checking presence FreeBSD loader" --result FOUND --color GREEN
+            BOOT_LOADER="FreeBSD"
+          else
+            logtext "Result: Not all expected files found in /boot"
+            Display --indent 4 --text "- Checking presence FreeBSD loader" --result "NOT FOUND" --color WHITE	  
+        fi
+    fi
+#
+#################################################################################
+#
+    # Test        : BOOT-5165
+    # Description : Check for FreeBSD boot services
+    Register --test-no BOOT-5165 --os FreeBSD --weight L --network NO --description "Check for FreeBSD boot services"
+    if [ ${SKIPTEST} -eq 0 ]; then
+        # FreeBSD (Read /etc/rc.conf file for enabled services)
+        logtext "Searching for services at startup (rc.conf)..."
+        FIND=`egrep -v -i '^#|none' /etc/rc.conf | egrep -i '_enable.*(yes|on|1)' | sort | awk -F= '{ print $1 }' | sed 's/_enable//'`
+        N=0
+        for I in ${FIND}; do
+            logtext "Found service (rc.conf): ${I}"
+            report "boottask[]=${I}"
+            N=`expr ${N} + 1`
+        done
+        Display --indent 2 --text "- Checking services at startup (rc.conf)..." --result "DONE" --color GREEN
+        Display --indent 6 --text "Result: found $N services/options set"
+        logtext "Found $N services/options to run at startup"
+    fi
+#
+#################################################################################
+#
+    # Test        : BOOT-5177
+    # Description : Check for Linux boot services (systemd and chkconfig)
+    # Notes       : We skip using chkconfig if systemd is being used.
+    Register --test-no BOOT-5177 --os Linux --weight L --network NO --description "Check for Linux boot and running services"
+    if [ ${SKIPTEST} -eq 0 ]; then
+        CHECKED=0
+        logtext "Test: checking presence systemctl binary"
+        # Determine if we have systemctl on board
+        if [ ! "${SYSTEMCTLBINARY}" = "" ]; then
+            logtext "Result: systemctl binary found, trying that to discover information"
+            # Running services
+            logtext "Searching for running services (systemctl services only)"
+            FIND=`${SYSTEMCTLBINARY} --full --type=service | awk '{ if ($4=="running") { print $1 } }' | awk -F. '{ print $1 }'`
+            N=0
+            report "running_service_tool=systemctl"
+            for I in ${FIND}; do
+                logtext "Found running service: ${I}"
+                report "running_service[]=${I}"
+                N=`expr ${N} + 1`
+            done
+            logtext "Suggestion: Run systemctl --full --type=service to see all services"
+            Display --indent 2 --text "- Check running services (systemctl)... " --result "DONE" --color GREEN
+            Display --indent 8 --text "Result: found $N running services"
+            logtext "Result: Found $N enabled services"
+
+            # Services at boot
+            logtext "Searching for enabled services (systemctl services only)"
+            FIND=`${SYSTEMCTLBINARY} list-unit-files --type=service | awk '{ if ($2=="enabled") { print $1 } }' | awk -F. '{ print $1 }'`
+            N=0
+            report "boot_service_tool=systemctl"
+            for I in ${FIND}; do
+                logtext "Found enabled service at boot: ${I}"
+                report "boot_service[]=${I}"
+                N=`expr ${N} + 1`
+            done
+            logtext "Suggestion: Run systemctl list-unit-files --type=service to see all services"
+            Display --indent 2 --text "- Check enabled services at boot (systemctl)... " --result "DONE" --color GREEN
+            Display --indent 8 --text "Result: found $N enabled services"
+            logtext "Result: Found $N running services"
+
+          else
+            logtext "Result: systemctl binary not found, checking chkconfig binary"
+            if [ ! "${CHKCONFIGBINARY}" = "" ]; then
+                logtext "Result: chkconfig binary found, trying that to discover information"
+                logtext "Searching for services at startup (chkconfig, runlevel 3 and 5)... "
+                FIND=`${CHKCONFIGBINARY} --list | egrep '3:on|5:on' | awk '{ print $1 }'`
+                N=0
+                report "boot_service_tool=chkconfig"
+                for I in ${FIND}; do
+                    logtext "Found service (at boot, runlevel 3 or 5): ${I}"
+                    report "boot_service[]=${I}"
+                    N=`expr ${N} + 1`
+                done
+                logtext "Suggestion: Run chkconfig --list to see all services and disable unneeded services"
+                Display --indent 2 --text "- Check services at startup (chkconfig)... " --result "DONE" --color GREEN
+                Display --indent 8 --text "Result: found $N services"
+                logtext "Result: Found $N services at startup"
+              else
+                logtext "Result: both systemctl and chkconfig not found. Skipping this test"
+            fi
+        fi
+    fi
+#
+#################################################################################
+#
+    # Test        : BOOT-5180
+    # Description : Check for Linux boot services (Debian style)
+    if [ "${LINUX_VERSION}" = "Debian" -o "${LINUX_VERSION}" = "Ubuntu" ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
+    Register --test-no BOOT-5180 --os Linux --preqs-met ${PREQS_MET} --weight L --network NO --description "Check for Linux boot services (Debian style)"
+    if [ ${SKIPTEST} -eq 0 ]; then
+        # YYY runlevel check
+        sRUNLEVEL=`${RUNLEVELBINARY} | grep "N 2"`
+        if [ ! "${sRUNLEVEL}" = "" ]; then
+            FIND=`find /etc/rc2.d -type l -print | cut -d '/' -f4 | sed "s/S[0-9][0-9]//g" | sort`
+            if [ ! "${FIND}" = "" ]; then
+                N=0
+                for I in ${FIND}; do
+                    logtext "Found service (at boot, runlevel 2): ${I}"
+                    N=`expr ${N} + 1`
+                done
+                Display --indent 2 --text "- Check services at startup (rc2.d)... " --result "DONE" --color WHITE
+                Display --indent 4 --text "Result: found $N services"
+                logtext "Found $N services"
+            fi
+          else
+            ReportSuggestion ${TEST_NO} "Determine runlevel and services at startup"
+        fi
+    fi
+#
+#################################################################################
+#
+    # Test        : BOOT-5184
+    # Description : Check world writable startup scripts
+    Register --test-no BOOT-5184 --os Linux --weight L --network NO --description "Check permissions for boot files/scripts"
+    if [ ${SKIPTEST} -eq 0 ]; then
+        FOUND=0
+        CHECKDIRS="/etc/init.d /etc/rc.d /etc/rcS.d"
+
+        logtext "Result: checking /etc/init.d scripts for writable bit"
+        for I in ${CHECKDIRS}; do
+            logtext "Test: checking if directory ${I} exists"
+            if [ -d ${I} ]; then
+                logtext "Result: directory ${I} found"
+                logtext "Test: checking for available files in directory"
+                FIND=`find ${I} -type f -print`
+                if [ ! "${FIND}" = "" ]; then
+                    logtext "Result: found files in directory, checking permissions now"
+                    for J in ${FIND}; do
+                        logtext "Test: checking permissions of file ${J}"
+                        IsWorldWritable ${J}
+                        if [ "${FileIsWorldWritable}" = "TRUE" ]; then
+                            ReportWarning ${TEST_NO} "H" "Found writable startup script ${J}"
+                            logtext "Result: warning, file ${J} is world writable"
+                            FOUND=1
+                          else
+                            logtext "Result: good, file ${J} not world writable"
+                        fi
+                    done
+                  else
+                    logtext "Result: found no files in directory."
+                fi
+              else
+                logtext "Result: directory ${I} not found. Skipping.."
+            fi
+        done
+
+        # /etc/rc[0-6].d
+        for NO in 0 1 2 3 4 5 6; do
+            logtext "Test: Checking /etc/rc${NO}.d scripts for writable bit"
+            if [ -d /etc/rc${NO}.d ]; then
+                FIND=`find /etc/rc${NO}.d -type f -print`
+                for I in ${FIND}; do
+                    IsWorldWritable ${I}
+                    if [ "${FileIsWorldWritable}" = "TRUE" ]; then
+                        ReportWarning ${TEST_NO} "H" "Found writable startup script ${I}"
+                        logtext "Result: warning, file ${I} is world writable"
+                        FOUND=1
+                      else
+                        logtext "Result: good, file ${I} not world writable"
+                    fi
+                done
+            fi
+        done
+
+        # Other files
+        CHECKFILES="/etc/rc /etc/rc.local /etc/rc.d/rc.sysinit"
+        for I in ${CHECKFILES}; do
+            if [ -f ${I} ]; then
+                logtext "Test: Checking ${I} file for writable bit"
+                IsWorldWritable ${I}
+                if [ "${FileIsWorldWritable}" = "TRUE" ]; then
+                    ReportWarning ${TEST_NO} "H" "Found writable startup script ${I}"
+                    FOUND=1
+                    logtext "Result: warning, file ${I} is world writable"
+                  else
+                    logtext "Result: good, file ${I} not world writable"
+                fi
+            fi
+        done
+
+        # Check results
+        if [ ${FOUND} -eq 1 ]; then
+            Display --indent 2 --text "- Check startup files (permissions)... " --result "WARNING" --color RED
+            ReportWarning ${TEST_NO} "H" "One or more startup files can be overwritten by all users"
+            ReportSuggestion ${TEST_NO} "Check startup scripts for world write access and change permissions if needed"
+            logtext "Result: found one or more scripts which are possibly writable by other users"
+            AddHP 0 3
+          else
+            Display --indent 2 --text "- Check startup files (permissions)... " --result "OK" --color GREEN
+            AddHP 3 3
+        fi
+    fi
+#
+#################################################################################
+#
+    # Add autostart services, like from KDE/Gnome
+    # Test        : BOOT-5102
+    # Description : Check for tasks which are autostarted via /etc/inittab
+    #Register --test-no BOOT-5102 --weight L --network NO --description "Check inittab for services"
+    #if [ ${SKIPTEST} -eq 0 ]; then
+    #fi
+    #YYY check against static list?
+#
+#################################################################################
+#
+    # Test        : BOOT-5202
+    # Description : Check uptime of system
+    Register --test-no BOOT-5202 --os Linux --weight L --network NO --description "Check uptime of system"
+    if [ ${SKIPTEST} -eq 0 ]; then
+        FOUND=0
+        FIND=""
+        case "${OS}" in
+            Linux)
+               # Idle time, not real uptime
+               if [ -f /proc/uptime ]; then
+                   FIND=`cat /proc/uptime | cut -d ' ' -f1 | cut -d '.' -f1`
+                 else
+                   Display --indent 2 --text "- Checking uptime" --result SKIPPED --color YELLOW
+                   ReportException "No uptime test available for this operating system (/proc/uptime missing)"
+               fi
+              ;;
+            Solaris)
+               if [ ! "${KSTATBINARY}" = "" ]; then
+                   FIND=`${KSTATBINARY} -p unix:0:system_misc:snaptime | grep "^unix" | awk '{print $2}' | cut -d "." -f1`
+                 else
+                   Display --indent 2 --text "- Checking uptime" --result SKIPPED --color YELLOW
+                   ReportException "No uptime test available for this operating system (kstat missing)"
+               fi
+              ;;
+            *)
+               Display --indent 2 --text "- Checking uptime" --result SKIPPED --color YELLOW
+               ReportException "No uptime test available for this operating system"
+              ;;
+        esac
+        if [ ! "${FIND}" = "" ]; then
+            UPTIME_IN_SECS="${FIND}"
+            UPTIME_IN_DAYS=`expr ${UPTIME_IN_SECS} / 60 / 60 / 24`
+            logtext "Uptime (in seconds): ${UPTIME_IN_SECS}"
+            logtext "Uptime (in days): ${UPTIME_IN_DAYS}"
+          else
+            logtext "Result: no uptime information available"
+        fi
+    fi
+
+
+
+#
+#################################################################################
+#
+
+report "boot_loader=${BOOT_LOADER}"
+
+wait_for_keypress
+
+#
+#================================================================================
