@@ -31,9 +31,11 @@ if [ ${SKIPTEST} -eq 0 ]; then
 		for I in ${FIND}; do
 			logtext "Have a password account: ${I}"
 		done
+		AddHP 0 3
 	else
 		Display --indent 2 --text "- Checking the users except root have a password..." --result OK --color GREEN
 		logtext "Result: No accounts found has a password other than root."
+		AddHP 3 3
 	fi
 
 fi
@@ -60,9 +62,11 @@ if [ ${SKIPTEST} -eq 0 ]; then
 			logtext "is assigned a password and used for daily operations or emergencies. ie: bad shell for root user."
 			ReportSuggestion ${TEST_NO} "Use vipw to delete the 'toor' user if not used."
 		fi
+		AddHP 0 3
 	else
 		Display --indent 2 --text "- Search administrator accounts..." --result OK --color GREEN
 		logtext "Result: No accounts found with UID 0 other than root."
+		AddHP 3 3
 	fi
 fi
 #
@@ -86,11 +90,13 @@ if [ ${SKIPTEST} -eq 0 ]; then
 		if [ "${FIND}" = "" ]; then
 			Display --indent 2 --text "- Checking for non-unique UIDs... " --result OK --color GREEN
 			logtext "Result: all accounts found in ${PASSWD_FILE} are unique"
+			AddHP 3 3
 		else
 			Display --indent 2 --text "- Checking for non-unique UIDs... " --result WARNING --color RED
 			logtext "Result: found multiple accounts with same UID"
 			logtext "Output (non-unique UIDs): ${FIND}"
 			ReportWarning ${TEST_NO} "Multiple accounts found with same UID"
+			AddHP 0 3
 		fi
 	else
 		Display --indent 2 --text "- Checking UIDs... " --result SKIPPED --color WHITE
@@ -168,10 +174,12 @@ if [ ${SKIPTEST} -eq 0 ]; then
 	if [ "${FIND}" = "" ]; then
 		Display --indent 2 --text "- Checking non unique group ID's..." --result OK --color GREEN
 		logtext "Result: All group ID's are unique"
+		AddHP 3 3
 	else
 		Display --indent 2 --text "- Checking non unique group ID's..." --result WARNING --color RED
 		logtext "Result: Found the same group ID multiple times"
 		logtext "Output: ${FIND}"
+		AddHP 0 3
 		ReportWarning ${TEST_NO} "H" "Found multiple groups with same group ID"
 		ReportSuggestion ${TEST_NO} "Check your /etc/group file and correct inconsistencies"
 	fi
