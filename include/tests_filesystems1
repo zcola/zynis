@@ -51,59 +51,6 @@
     # YYY Checking Physical Volumes
 #
 #################################################################################
-#
-    # Test        : FILE-6311
-    # Description : Checking LVM Volume Groups
-    # Notes       : No volume groups found is sent to STDERR for unclear reasons. Filtering both STDERR redirecting and grep.
-    if [ ! "${VGDISPLAYBINARY}" = "" ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
-    Register --test-no FILE-6311 --preqs-met ${PREQS_MET} --weight L --network NO --description "Checking LVM volume groups"
-    if [ ${SKIPTEST} -eq 0 ]; then
-        logtext "Test: Checking for LVM volume groups"
-        FIND=`${VGDISPLAYBINARY} 2> /dev/null | grep -v "No volume groups found" | grep "VG Name" | awk '{ print $3 }' | sort`
-        if [ ! "${FIND}" = "" ]; then
-            logtext "Result: found one or more volume groups"
-            for I in ${FIND}; do
-                logtext "Found LVM volume group: ${I}"
-                report "lvm_volume_group[]=${I}"
-            done
-            LVM_VG_USED=1
-            Display --indent 2 --text "- Checking LVM volume groups..." --result FOUND --color GREEN
-          else
-            logtext "Result: no LVM volume groups found"
-            Display --indent 2 --text "- Checking LVM volume groups..." --result NONE --color WHITE
-        fi
-    fi
-#
-#################################################################################
-#
-    # Test        : FILE-6312
-    # Description : Checking LVM volumes
-    if [ ! "${LVDISPLAYBINARY}" = "" -a ${LVM_VG_USED} -eq 1 ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
-    Register --test-no FILE-6312 --preqs-met ${PREQS_MET} --weight L --network NO --description "Checking LVM volumes"
-    if [ ${SKIPTEST} -eq 0 ]; then
-        logtext "Test: Checking for LVM volumes"
-        FIND=`${LVDISPLAYBINARY} | grep -v "No volume groups found" | grep "LV Name" | awk '{ print $3 }' | sort`
-        if [ ! "${FIND}" = "" ]; then
-            logtext "Result: found one or more volumes"
-            for I in ${FIND}; do
-                logtext "Found LVM volume: ${I}"
-                report "lvm_volume[]=${I}"
-            done
-            Display --indent 4 --text "- Checking LVM volumes..." --result FOUND --color GREEN
-          else
-            logtext "Result: no LVM volume groups found"
-            Display --indent 4 --text "- Checking LVM volumes..." --result NONE --color WHITE
-        fi
-    fi
-#
-#################################################################################
-#
-    # Test        : FILE-6316
-    # Description : Checking /etc/fstab file permissions
-    #Register --test-no FILE-6316 --os Linux --weight L --network NO --description "Checking /etc/fstab"
-    #if [ ${SKIPTEST} -eq 0 ]; then
-    # 644
-#
 #################################################################################
 #
     # Test        : FILE-6323

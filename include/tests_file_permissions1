@@ -31,6 +31,7 @@
 	      elif [ "${PERMS}" = "BAD" ]; then
 	        Display --indent 4 --text "${I}" --result WARNING --color RED
 		ReportWarning ${TEST_NO} "M" "Incorrect permissions for file ${I}"
+            AddHP 0 1
 	      else
 	        logtext "UNKNOWN status for file"
 	  fi

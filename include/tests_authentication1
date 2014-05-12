@@ -197,52 +197,14 @@ if [ ${SKIPTEST} -eq 0 ]; then
 	if [ "${FIND}" = "" ]; then
 		Display --indent 2 --text "- Checking non unique group names..." --result OK --color GREEN
 		logtext "Result: All group names are unique"
+		AddHP 3 3
 	else
 		Display --indent 2 --text "- Checking non unique group names..." --result WARNING --color WARNING
 		logtext "Result: Found the same group name multiple times"
 		logtext "Output: ${FIND}"
+		AddHP 0 3
 		ReportWarning ${TEST_NO} "M" "Found inconsistencies in group file (multiple occurences of a single group)"
 		ReportSuggestion ${TEST_NO} "Check your /etc/group file and correct inconsistencies"
-	fi
-fi
-#
-#################################################################################
-#
-# Test        : AUTH-9228
-# Description : Check Linux password file consistency
-if [ -x /usr/sbin/pwck ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
-Register --test-no AUTH-9228 --os Linux --preqs-met ${PREQS_MET} --weight L --network NO --description "Check password file consistency"
-if [ ${SKIPTEST} -eq 0 ]; then
-	logtext "Test: Checking password file consistency (pwck)"
-	FIND=`/usr/sbin/pwck -q -r 2> /dev/null; echo $?`
-	if [ "${FIND}" = "0" ]; then
-		Display --indent 2 --text "- Checking password file consistency..." --result OK --color GREEN
-		logtext "Result: pwck check didn't find any problems"
-	else
-		Display --indent 2 --text "- Checking password file consistency..." --result WARNING --color RED
-		logtext "Result: pwck found one or more errors/warnings in the password file."
-		ReportWarning ${TEST_NO} "M" "pwck found one or more errors/warnings in the password file"
-		ReportSuggestion ${TEST_NO} "Run pwck manually and correct found issues."
-	fi
-fi
-#
-#################################################################################
-#
-# Test        : AUTH-9230
-# Description : Check Solaris password file consistency
-if [ -x /usr/sbin/pwck ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
-Register --test-no AUTH-9230 --os Solaris --preqs-met ${PREQS_MET} --weight L --network NO --description "Check password file consistency"
-if [ ${SKIPTEST} -eq 0 ]; then
-	logtext "Test: Checking password file consistency (pwck)"
-	FIND=`/usr/sbin/pwck 2> /dev/null; echo $?`
-	if [ "${FIND}" = "0" ]; then
-		Display --indent 2 --text "- Checking password file consistency..." --result OK --color GREEN
-		logtext "Result: pwck finished didn't find problems"
-	else
-		Display --indent 2 --text "- Checking password file consistency..." --result WARNING --color RED
-		logtext "Result: pwck found one or more errors/warnings in the password file."
-		ReportWarning ${TEST_NO} "M" "pwck found one or more errors/warnings in the password file"
-		ReportSuggestion ${TEST_NO} "Run pwck manually and correct found issues."
 	fi
 fi
 #
@@ -288,60 +250,6 @@ fi
 #
 #################################################################################
 #
-# Test        : AUTH-9240
-# Description : Query NIS+ authentication support
-Register --test-no AUTH-9240 --weight L --network NO --description "Query NIS+ authentication support"
-if [ ${SKIPTEST} -eq 0 ]; then
-	if [ -f /etc/nsswitch.conf ]; then
-		FIND=`egrep "^passwd" /etc/nsswitch.conf | egrep "compat|nisplus"`
-		if [ "${FIND}" = "" ]; then
-			logtext "Result: NIS+ authentication not enabled"
-			Display --indent 2 --text "- Checking NIS+ authentication support" --result "NOT ENABLED" --color WHITE
-		else
-			FIND2=`egrep "^passwd_compat" /etc/nsswitch.conf | grep "nisplus"`
-			FIND3=`egrep "^passwd" /etc/nsswitch.conf | grep "nisplus"`
-			if [ ! "${FIND2}" = "" -o ! "${FIND3}" = "" ]; then
-				logtext "Result: NIS+ authentication enabled"
-				Display --indent 2 --text "- Checking NIS+ authentication support" --result "ENABLED" --color GREEN
-			else
-				logtext "Result: NIS+ authentication not enabled"
-				Display --indent 2 --text "- Checking NIS+ authentication support" --result "NOT ENABLED" --color WHITE
-			fi
-		fi      
-	else
-		logtext "Result: /etc/nsswitch.conf not found"
-	fi
-fi
-#
-#################################################################################
-#
-# Test        : AUTH-9242
-# Description : Query NIS authentication support
-Register --test-no AUTH-9242 --weight L --network NO --description "Query NIS authentication support"
-if [ ${SKIPTEST} -eq 0 ]; then
-	if [ -f /etc/nsswitch.conf ]; then
-		FIND=`egrep "^passwd" /etc/nsswitch.conf | egrep "compat|nis" | grep -v "nisplus"`
-		if [ "${FIND}" = "" ]; then
-			logtext "Result: NIS authentication not enabled"
-			Display --indent 2 --text "- Checking NIS authentication support" --result "NOT ENABLED" --color WHITE
-		else
-			FIND2=`egrep "^passwd_compat" /etc/nsswitch.conf | grep "nis" | grep -v "nisplus"`
-			FIND3=`egrep "^passwd" /etc/nsswitch.conf | grep "nis" | grep -v "nisplus"`
-			if [ ! "${FIND2}" = "" -o ! "${FIND3}" = "" ]; then
-				logtext "Result: NIS authentication enabled"
-				Display --indent 2 --text "- Checking NIS authentication support" --result "ENABLED" --color GREEN
-			else
-				logtext "Result: NIS authentication not enabled"
-				Display --indent 2 --text "- Checking NIS authentication support" --result "NOT ENABLED" --color WHITE
-			fi
-		fi      
-	else
-		logtext "Result: /etc/nsswitch.conf not found"
-	fi
-fi
-#
-#################################################################################
-#
 # Test        : AUTH-9250
 # Description : Check for sudoers file
 Register --test-no AUTH-9250 --weight L --network NO --description "Checking sudoers file"
@@ -379,156 +287,12 @@ if [ ${SKIPTEST} -eq 0 ]; then
 	logtext "Result: Found file permissions: ${FIND}"
 	if [ "${FIND}" = "rw-------" -o "${FIND}" = "rw-rw----" -o "${FIND}" = "r--r-----" ]; then
 		logtext "Result: file ${SUDOERS_FILE} has correct permissions"
+		AddHP 1 1
 		Display --indent 4 --text "- Check sudoers file permissions" --result OK --color GREEN
 	else
 		logtext "Result: file has possibly unsafe file permissions"
+		AddHP 0 1
 		Display --indent 4 --text "- Check sudoers file permissions" --result WARNING --color RED
-	fi
-fi
-#
-#################################################################################
-#
-# Test        : AUTH-9264
-# Description : Scan /etc/pam.conf file
-Register --test-no AUTH-9264 --weight L --network NO --description "Checking presence pam.conf"
-if [ ${SKIPTEST} -eq 0 ]; then
-	logtext "Test: Checking file /etc/pam.conf"
-	if [ -f /etc/pam.conf ]; then
-		logtext "Result: file /etc/pam.conf exists"
-		Display --indent 2 --text "- Checking PAM configuration files (pam.conf)" --result FOUND --color GREEN
-		logtext "Test: searching PAM configuration files"
-		FIND=`cat /etc/pam.conf | grep -v "^#" | grep -v "^$" | sed 's/ /!space!/g'`
-		if [ "${FIND}" = "" ]; then
-			logtext "Result: File has no configuration options defined (empty, or only filled with comments and empty lines)"
-		else
-			logtext "Result: found one or more configuration lines"
-			for I in ${FIND}; do
-				I=`echo ${I} | sed 's/!space!/ /g'`
-				logtext "Found line: ${I}"
-			done
-		fi
-	else
-		logtext "Result: file /etc/pam.conf could not be found"
-		Display --indent 2 --text "- Checking PAM configuration file (pam.conf)" --result "NOT FOUND" --color WHITE
-	fi	
-fi
-#
-#################################################################################
-#
-# Test        : AUTH-9266
-# Description : Searching available PAM configurations (/etc/pam.d)
-Register --test-no AUTH-9266 --weight L --network NO --description "Checking presence pam.d files"
-if [ ${SKIPTEST} -eq 0 ]; then
-	logtext "Test: Checking directory /etc/pam.d"
-	if [ -d /etc/pam.d ]; then
-		logtext "Result: directory /etc/pam.d exists"
-		Display --indent 2 --text "- Checking PAM configuration files (pam.d)" --result FOUND --color GREEN
-		logtext "Test: searching PAM configuration files"
-		FIND=`find /etc/pam.d -type f -print | sort`
-		for I in ${FIND}; do
-			logtext "Found file: ${I}"
-		done
-	else
-		logtext "Result: directory /etc/pam.d could not be found"
-		Display --indent 2 --text "- Checking PAM configuration files (pam.d)" --result "NOT FOUND" --color WHITE
-	fi	
-fi
-#
-#################################################################################
-#
-# Test        : AUTH-9268
-# Description : Searching available PAM files
-# Notes       : PAM is used on AIX, Linux, HPUX, Solaris
-if [ ${OS} = "AIX" -o ${OS} = "Linux" -o ${OS} = "HPUX" -o ${OS} = "Solaris" ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
-Register --test-no AUTH-9268 --preqs-met ${PREQS_MET} --weight L --network NO --description "Checking presence pam.d files"
-if [ ${SKIPTEST} -eq 0 ]; then
-	FOUND=0
-	logtext "Test: Searching pam modules"
-	for I in ${PAM_FILE_LOCATIONS}; do
-		logtext "Test: Checking ${I}"
-		if [ -d ${I} -a ! -L ${I} ]; then
-			logtext "Result: directory ${I} exists"
-			FIND=`find ${I} -type f -name "*.so" -print | sort`
-			if [ ! "${FIND}" = "" ]; then FOUND=1; fi
-			for I in ${FIND}; do
-				logtext "Found file: ${I}"
-			done
-		else
-			logtext "Result: directory ${I} could not be found or is a symlink to another directory"
-		fi
-	done
-	# Check if we found at least one module
-	if [ ${FOUND} -eq 0 ]; then
-		Display --indent 2 --text "- Checking PAM modules" --result "NOT FOUND" --color WHITE
-		logtext "Result: no PAM modules found"
-	else
-		Display --indent 2 --text "- Checking PAM modules" --result FOUND --color GREEN
-	fi
-fi
-#
-#################################################################################
-#
-# Test        : AUTH-9282 and AUTH-9283
-# Note        : Every Linux based operating system seem to have different passwd
-#               options, so we have to check the version first.
-if [ "${OS}" = "Linux" ]; then
-	if [ ${OS_REDHAT_OR_CLONE} -eq 0 ]; then
-		case ${LINUX_VERSION} in
-			"SuSE")
-				PREQS_MET="YES"
-				FIND=`passwd -a -S | awk '{ if ($2=="P" && $5=="99999") print $1 }'`
-				FIND2=`passwd -a -S | awk '{ if ($2=="NP") print $1 }'`
-				;;
-			*)
-				PREQS_MET="YES"
-				FIND=`passwd --all --status | awk '{ if ($2=="P" && $5=="99999") print $1 }'`
-				FIND2=`passwd --all --status | awk '{ if ($2=="NP") print $1 }'`
-				;;
-		esac
-	else
-		logtext "Result: skipping test for this Linux version"
-		ReportManual "AUTH-9282:01"
-		PREQS_MET="NO"
-		FIND=""
-		FIND2=""
-	fi
-else
-	PREQS_MET="NO"
-fi
-
-# Test        : AUTH-9282
-# Description : Search password protected accounts without expire (Linux)
-Register --test-no AUTH-9282 --preqs-met ${PREQS_MET} --weight L --network NO --description "Checking password protected account without expire date"
-if [ ${SKIPTEST} -eq 0 ]; then
-	logtext "Test: Checking Linux version and password expire date status"
-	if [ "${FIND}" = "" ]; then
-		logtext "Result: all accounts seem to have an expire date"
-		Display --indent 2 --text "- Checking accounts without expire date" --result OK --color GREEN
-	else
-		logtext "Result: found one or more accounts with expire date set"
-		for I in ${FIND}; do
-			logtext "Account without expire date: ${I}"
-		done
-		Display --indent 2 --text "- Checking accounts without expire date" --result SUGGESTION --color YELLOW
-		ReportSuggestion ${TEST_NO} "When possible set expire dates for all password protected accounts"
-	fi
-fi
-# Test        : AUTH-9283
-# Description : Search passwordless accounts
-Register --test-no AUTH-9283 --preqs-met ${PREQS_MET} --weight L --network NO --description "Checking accounts without password"
-if [ ${SKIPTEST} -eq 0 ]; then
-	logtext "Test: Checking passwordless accounts"
-	if [ "${FIND2}" = "" ]; then
-		logtext "Result: all accounts seem to have a password"
-		Display --indent 2 --text "- Checking accounts without password" --result OK --color GREEN
-	else
-		logtext "Result: found one or more accounts without password"
-		for I in ${FIND2}; do
-			logtext "Account without password: ${I}"
-			report "account_without_password=${I}"
-		done
-		Display --indent 2 --text "- Checking accounts without password" --result WARNING --color RED
-		ReportWarning ${TEST_NO} "Found accounts without password"
 	fi
 fi
 #

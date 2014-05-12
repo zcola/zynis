@@ -274,16 +274,6 @@
 #
 #################################################################################
 #
-    # Add autostart services, like from KDE/Gnome
-    # Test        : BOOT-5102
-    # Description : Check for tasks which are autostarted via /etc/inittab
-    #Register --test-no BOOT-5102 --weight L --network NO --description "Check inittab for services"
-    #if [ ${SKIPTEST} -eq 0 ]; then
-    #fi
-    #YYY check against static list?
-#
-#################################################################################
-#
     # Test        : BOOT-5202
     # Description : Check uptime of system
     Register --test-no BOOT-5202 --os Linux --weight L --network NO --description "Check uptime of system"
@@ -322,9 +312,6 @@
             logtext "Result: no uptime information available"
         fi
     fi
-
-
-
 #
 #################################################################################
 #

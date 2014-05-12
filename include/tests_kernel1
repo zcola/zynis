@@ -135,13 +135,6 @@
 #
 #################################################################################
 #
-    # Test        : KRNL-5680
-    # Description : Check if installed kernel has PAE support
-    # Dependency  : KRNL-5677
-    # More info   : RedHat/CentOS/Fedora uses the package name 'kernel-PAE'
-#
-#################################################################################
-#
     # Test        : KRNL-5695
     # Description : Determining Linux kernel version and release number
     Register --test-no KRNL-5695 --os Linux --weight L --network NO --description "Determine Linux kernel version and release number"
@@ -283,26 +276,6 @@
 #
 #################################################################################
 #
-    # Test        : KRNL-5770
-    # Description : Checking Solaris load modules
-    Register --test-no KRNL-5770 --os Solaris --weight L --network NO --description "Checking active kernel modules"
-    if [ ${SKIPTEST} -eq 0 ]; then
-        logtext "Test: searching loaded kernel modules"
-        FIND=`modinfo -c -w | grep -v "UNLOADED" | grep LOADED | awk '{ print $3 }' | sort`
-        if [ ! "${FIND}" = "" ]; then
-            for I in ${FIND}; do
-                logtext "Found module: ${I}"
-                report "loaded_kernel_module[]=${I}"
-            done
-            Display --indent 2 --text "- Checking Solaris active kernel modules" --result DONE --color GREEN
-          else
-            logtext "Result: no output"
-            Display --indent 2 --text "- Checking Solaris active kernel modules" --result UNKNOWN --color YELLOW
-        fi
-    fi
-#
-#################################################################################
-#
     # Test        : KRNL-5788
     # Description : Checking availability new kernel
     if [ "${LINUX_VERSION}" = "Debian" -o "${LINUX_VERSION}" = "Ubuntu" ]; then PREQS_MET="YES"; else PREQS_MET="NO"; fi
@@ -396,13 +369,6 @@
             logtext "Result: file /etc/security/limits.conf does not exist, skipping test" 
         fi
     fi
-#
-#################################################################################
-#
-    # Test        : KRNL-5826
-    # Description : Checking core dumps configuration (Solaris)
-    #Register --test-no KRNL-5826 --os Linux --weight L --network NO --description "Checking core dumps configuration"
-    #if [ ${SKIPTEST} -eq 0 ]; then
 #
 #################################################################################
 #

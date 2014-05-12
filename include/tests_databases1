@@ -47,7 +47,7 @@
 	    ReportWarning ${TEST_NO} "H" "No MySQL root password set"
 	    ReportSuggestion ${TEST_NO} "Use mysqladmin to set a MySQL root password (mysqladmin -u root -p password MYPASSWORD)"
 	    Display --indent 4 --text "- Checking empty MySQL root password" --result WARNING --color RED
-	    AddHP 0 5
+	    AddHP 0 2
 	  else
 	    logtext "Result: Login did not succeed, so a MySQL root password is set"	    
 	    Display --indent 4 --text "- Checking MySQL root password" --result OK --color GREEN
